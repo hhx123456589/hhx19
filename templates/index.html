@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ansible控制台</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        #output { background: white; padding: 15px; margin-top: 20px; border-radius: 5px; max-height: 300px; overflow-y: auto; }
+        button { padding: 8px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .host-list { margin-top: 20px; }
+        .host-item { padding: 8px; border-bottom: 1px solid #ddd; }
+        .online { color: green; }
+        .offline { color: red; }
+        #statusChart { max-width: 500px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>Ansible主机监控</h1>
+    
+    <button onclick="runAnsiblePing()">检测主机状态</button>
+    <button onclick="scanNetwork()" style="background: #2196F3;">扫描网络</button>
+    
+    <div>
+        <input type="text" id="newHost" placeholder="输入主机IP">
+        <button onclick="addHost()" style="background: #ff9800;">添加主机</button>
+    </div>
+    
+    <canvas id="statusChart" width="400" height="200"></canvas>
+    
+    <div class="host-list" id="hostList"></div>
+    
+    <div id="output"></div>
+
+    <script>
+        let chart;
+        
+        function addLog(msg, isError = false) {
+            const output = document.getElementById('output');
+            const log = document.createElement('div');
+            log.textContent = new Date().toLocaleTimeString() + ': ' + msg;
+            log.style.color = isError ? 'red' : 'green';
+            output.appendChild(log);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        async function runAnsiblePing() {
+            addLog('开始检测主机状态...');
+            try {
+                const response = await fetch('/api/ansible/ping');
+                const data = await response.json();
+                
+                if (data.success) {
+                    addLog('检测完成');
+                    updateChart(data.output);
+                    updateHostList(data.output);
+                } else {
+                    addLog('错误: ' + (data.error || '未知错误'), true);
+                }
+            } catch (error) {
+                addLog('请求失败: ' + error, true);
+            }
+        }
+
+        function updateChart(output) {
+            const ctx = document.getElementById('statusChart').getContext('2d');
+            const success = (output.match(/SUCCESS/g) || []).length;
+            const failed = (output.match(/FAILED/g) || []).length;
+            
+            if (chart) chart.destroy();
+            
+            chart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['在线', '离线'],
+                    datasets: [{
+                        data: [success, failed],
+                        backgroundColor: ['#4CAF50', '#F44336']
+                    }]
+                }
+            });
+        }
+
+        function updateHostList(output) {
+            const hostList = document.getElementById('hostList');
+            hostList.innerHTML = '';
+            
+            const ips = output.match(/\d+\.\d+\.\d+\.\d+/g) || [];
+            ips.forEach(ip => {
+                const isOnline = output.includes(ip + ' | SUCCESS');
+                const item = document.createElement('div');
+                item.className = 'host-item ' + (isOnline ? 'online' : 'offline');
+                item.textContent = ip + ' - ' + (isOnline ? '在线' : '离线');
+                hostList.appendChild(item);
+            });
+        }
+
+        async function addHost() {
+            const ip = document.getElementById('newHost').value.trim();
+            if (!ip) return alert('请输入IP地址');
+            
+            addLog('正在添加主机: ' + ip);
+            try {
+                const response = await fetch('/api/hosts/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ host: ip })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addLog('主机添加成功');
+                    document.getElementById('newHost').value = '';
+                    runAnsiblePing();
+                } else {
+                    addLog('添加失败: ' + (data.error || '未知错误'), true);
+                }
+            } catch (error) {
+                addLog('请求失败: ' + error, true);
+            }
+        }
+
+        function scanNetwork() {
+            addLog('开始扫描网络...');
+            fetch('/api/network/scan')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        addLog('扫描完成');
+                        runAnsiblePing();
+                    } else {
+                        addLog('扫描失败: ' + (data.error || '未知错误'), true);
+                    }
+                })
+                .catch(error => addLog('请求失败: ' + error, true));
+        }
+
+        // 页面加载时自动检测
+        document.addEventListener('DOMContentLoaded', runAnsiblePing);
+    </script>
+</body>
+</html>
