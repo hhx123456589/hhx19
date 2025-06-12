@@ -5,9 +5,9 @@ docker build -t ansible-dashboard .
 bash
 docker run -d -p 5000:5000 -p 8080:80 --name ansible-dashboard ansible-dashboard
 3. 访问服务
-前端页面: http://localhost:8080
+前端页面: http://192.168.44.138:8080
 
-后端API: http://localhost:5000/api/ansible/ping
+后端API: http://192.168.44.138:5000/api/ansible/ping
 
 项目结构
 bash
